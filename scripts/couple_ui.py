@@ -1,5 +1,10 @@
+from modules.ui_components import FormRow, ToolButton
 from PIL import Image, ImageDraw
 import gradio as gr
+
+
+headers = ["x", "y", "weight"]
+data_value = [["0:0.5", "0.0:1.0", "1.0"], ["0.5:1.0", "0.0:1.0", "1.0"]]
 
 
 def parse_mapping(data: list) -> list:
@@ -72,11 +77,33 @@ def visualize_mapping(p_WIDTH: int, p_HEIGHT: int, data: list) -> Image:
     return matt
 
 
+def clear_dataframe():
+    return {"headers": headers, "data":data_value}
+
+
+def add_global_row_fn(df: list) -> list:
+    return [["0:1", "0:1", "1"]] + df
+    
+
+def delete_first_row_fn(df: list) -> list:
+    return df[1:] if len(df) > 2 else df
+
+
+def delete_last_row_fn(df: list) -> list:
+    return df[:-1] if len(df) > 2 else df
+
+def delete_by_row_num_fn(df: list, row_num: int) -> list:
+    row = max(0, min(int(row_num)-1, len(df)-1))
+    df.pop(row)
+    return df
+
+
 def couple_UI(script, title: str):
     with gr.Accordion(label=title, open=False):
         with gr.Row():
             enable = gr.Checkbox(label="Enable", elem_id="fc_enable")
 
+        with gr.Row():
             mode = gr.Radio(
                 ["Basic", "Advanced"],
                 label="Region Assignment",
@@ -96,45 +123,72 @@ def couple_UI(script, title: str):
                     ["Horizontal", "Vertical"],
                     label="Tile Direction",
                     value="Horizontal",
+                    scale=1
                 )
 
                 background = gr.Radio(
                     ["None", "First Line", "Last Line"],
                     label="Global Effect",
                     value="None",
+                    scale=3
                 )
 
         with gr.Group(visible=False, elem_id="fc_adv") as adv_settings:
-            mapping = gr.Dataframe(
-                label="Mapping",
-                headers=["x", "y", "weight"],
-                datatype="str",
-                row_count=(2, "dynamic"),
-                col_count=(3, "fixed"),
-                interactive=True,
-                type="array",
-                value=[["0:0.5", "0.0:1.0", "1.0"], ["0.5:1.0", "0.0:1.0", "1.0"]],
-            )
+            with gr.Column():
+                with FormRow():
+                    add_global_row = gr.Button("Add Global Row", variant="secondary", scale=2, elem_classes="fc_button_left fc_button")
+                    delete_first_row = gr.Button("Delete First Row", variant="secondary", scale=2, elem_classes="fc_button")
+                    delete_last_row = gr.Button("Delete Last Row", variant="secondary", scale=2, elem_classes="fc_button")
+                    delete_by_row_num = gr.Button("Delete Row #", variant="secondary", elem_classes="fc_button")
+                    row_num = gr.Number(minimum=1, maximum=100, step=1, value=1, variant="secondary", elem_classes="dimensions-tools", elem_id="fc_delete_num_input", show_label=False)
 
-            preview_img = gr.Image(
-                image_mode="RGB",
-                label="Mapping Preview",
-                type="pil",
-                interactive=False,
-                height=512,
-            )
+                mapping = gr.Dataframe(
+                    elem_id="fc_mapping",
+                    label="Mapping",
+                    headers=headers,
+                    datatype="str",
+                    row_count=(2, "dynamic"),
+                    col_count=(3, "fixed"),
+                    interactive=True,
+                    type="array",
+                    value=data_value,
+                )
 
-            with gr.Row():
-                preview_width = gr.Number(value=1024, label="Width", precision=0)
-                preview_height = gr.Number(value=1024, label="Height", precision=0)
+                with FormRow():
+                    with gr.Column(scale=4):
+                        preview_width = gr.Slider(minimum=64, maximum=4096, step=64, label="Width", value=1024, elem_id="couple_width")
+                        preview_height = gr.Slider(minimum=64, maximum=4096, step=64, label="Height", value=1024, elem_id="couple_height")
 
-            preview_btn = gr.Button("Preview Mapping", elem_id="fc_preview")
+                    with gr.Column(scale=1):
+                        res_switch_btn = ToolButton(value='\U000021C5', elem_id="couple_res_switch_btn", tooltip="Switch width/height")
+                    
+                    res_switch_btn.click(fn=None, _js="function(){switchCoupleWidthHeight()}", inputs=None, outputs=None, show_progress=False)
 
-            preview_btn.click(
-                visualize_mapping,
-                [preview_width, preview_height, mapping],
-                preview_img,
-            )
+                with gr.Row():
+                    preview_btn = gr.Button("Preview Mapping", elem_classes="fc_button")
+
+                    reset_table = gr.Button("Reset Mapping", elem_classes="fc_button")
+                    reset_table.click(clear_dataframe, None, mapping)
+
+                preview_img = gr.Image(
+                    image_mode="RGB",
+                    label="Mapping Preview",
+                    type="pil",
+                    interactive=False,
+                    height=512,
+                )
+
+                preview_btn.click(
+                        visualize_mapping,
+                        [preview_width, preview_height, mapping],
+                        preview_img,
+                    )
+
+                add_global_row.click(add_global_row_fn, mapping, mapping)
+                delete_first_row.click(delete_first_row_fn, mapping, mapping)
+                delete_last_row.click(delete_last_row_fn, mapping, mapping)
+                delete_by_row_num.click(delete_by_row_num_fn, [mapping, row_num], mapping)
+
 
         def on_radio_change(choice):
             if choice == "Basic":
